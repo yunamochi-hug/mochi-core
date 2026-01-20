@@ -1,13 +1,13 @@
 """
 YUNA - A girl who travels the world giving hugs in a mascot costume called Mochi.
 
-Features:
-- Life continuity (no teleporting)
-- Wardrobe changes (different clothes each day)
-- Memory of her entire life
-- Home base / hotel (must go home to sleep)
-- Daily routine (morning → day → evening → home → sleep)
-- Travel system (plan trips, book flights/hotels)
+Full integrated version with:
+- Random destination selection
+- Real flight schedules & hotel bookings
+- Full travel timeline (no teleporting!)
+- Travel blog style photos (no face)
+- Mochi mascot photos (the star!)
+- 25 min to 3 hour random posting intervals
 """
 
 import anthropic
@@ -20,855 +20,570 @@ import random
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from travel import TravelPlanner
 
 load_dotenv()
 
+DESTINATIONS = ["Tokyo", "Seoul", "Bangkok", "Hong Kong", "Taipei", "Osaka", "Kuala Lumpur", "Bali"]
 
-# ==================== APPEARANCE SYSTEM ====================
+FLIGHTS = {
+    ("Singapore", "Tokyo"): [
+        {"flight": "SQ638", "airline": "Singapore Airlines", "dep": "08:45", "arr": "16:50", "duration": 7.08, "dep_terminal": "T3", "arr_terminal": "T1", "arr_airport": "Narita", "aircraft": "Boeing 787-10"},
+        {"flight": "SQ636", "airline": "Singapore Airlines", "dep": "09:25", "arr": "17:35", "duration": 7.17, "dep_terminal": "T3", "arr_terminal": "T1", "arr_airport": "Narita", "aircraft": "Airbus A350-900"},
+        {"flight": "JL36", "airline": "Japan Airlines", "dep": "10:30", "arr": "18:30", "duration": 7.0, "dep_terminal": "T1", "arr_terminal": "T2", "arr_airport": "Haneda", "aircraft": "Boeing 777-300ER"},
+    ],
+    ("Singapore", "Seoul"): [
+        {"flight": "SQ600", "airline": "Singapore Airlines", "dep": "08:30", "arr": "15:55", "duration": 6.42, "dep_terminal": "T3", "arr_terminal": "T2", "arr_airport": "Incheon", "aircraft": "Airbus A350-900"},
+        {"flight": "KE644", "airline": "Korean Air", "dep": "01:15", "arr": "08:40", "duration": 6.42, "dep_terminal": "T1", "arr_terminal": "T2", "arr_airport": "Incheon", "aircraft": "Boeing 777-300ER"},
+    ],
+    ("Singapore", "Bangkok"): [
+        {"flight": "SQ970", "airline": "Singapore Airlines", "dep": "08:00", "arr": "09:20", "duration": 2.33, "dep_terminal": "T3", "arr_terminal": "Main", "arr_airport": "Suvarnabhumi", "aircraft": "Boeing 787-10"},
+        {"flight": "TG402", "airline": "Thai Airways", "dep": "09:45", "arr": "11:10", "duration": 2.42, "dep_terminal": "T1", "arr_terminal": "Main", "arr_airport": "Suvarnabhumi", "aircraft": "Boeing 777-300"},
+    ],
+    ("Singapore", "Hong Kong"): [
+        {"flight": "SQ856", "airline": "Singapore Airlines", "dep": "08:25", "arr": "12:25", "duration": 4.0, "dep_terminal": "T3", "arr_terminal": "T1", "arr_airport": "Hong Kong International", "aircraft": "Airbus A350-900"},
+        {"flight": "CX650", "airline": "Cathay Pacific", "dep": "11:35", "arr": "15:30", "duration": 3.92, "dep_terminal": "T1", "arr_terminal": "T1", "arr_airport": "Hong Kong International", "aircraft": "Airbus A350-1000"},
+    ],
+    ("Singapore", "Taipei"): [
+        {"flight": "SQ876", "airline": "Singapore Airlines", "dep": "08:20", "arr": "13:05", "duration": 4.75, "dep_terminal": "T3", "arr_terminal": "T2", "arr_airport": "Taoyuan", "aircraft": "Airbus A350-900"},
+        {"flight": "BR226", "airline": "EVA Air", "dep": "09:30", "arr": "14:20", "duration": 4.83, "dep_terminal": "T1", "arr_terminal": "T2", "arr_airport": "Taoyuan", "aircraft": "Boeing 777-300ER"},
+    ],
+    ("Singapore", "Osaka"): [
+        {"flight": "SQ618", "airline": "Singapore Airlines", "dep": "08:30", "arr": "16:00", "duration": 6.5, "dep_terminal": "T3", "arr_terminal": "T1", "arr_airport": "Kansai", "aircraft": "Airbus A350-900"},
+    ],
+    ("Singapore", "Kuala Lumpur"): [
+        {"flight": "SQ106", "airline": "Singapore Airlines", "dep": "07:30", "arr": "08:30", "duration": 1.0, "dep_terminal": "T3", "arr_terminal": "Main", "arr_airport": "KLIA", "aircraft": "Airbus A350-900"},
+        {"flight": "MH604", "airline": "Malaysia Airlines", "dep": "10:00", "arr": "11:00", "duration": 1.0, "dep_terminal": "T1", "arr_terminal": "Main", "arr_airport": "KLIA", "aircraft": "Airbus A330-300"},
+    ],
+    ("Singapore", "Bali"): [
+        {"flight": "SQ938", "airline": "Singapore Airlines", "dep": "08:10", "arr": "10:55", "duration": 2.75, "dep_terminal": "T3", "arr_terminal": "Int", "arr_airport": "Ngurah Rai", "aircraft": "Boeing 787-10"},
+        {"flight": "GA823", "airline": "Garuda Indonesia", "dep": "11:30", "arr": "14:15", "duration": 2.75, "dep_terminal": "T1", "arr_terminal": "Int", "arr_airport": "Ngurah Rai", "aircraft": "Boeing 737-800"},
+    ],
+}
 
-class YunaAppearance:
-    def __init__(self, state_file="data/appearance.json"):
-        self.state_file = state_file
-        
-        self.tops = [
-            "white t-shirt",
-            "black tank top", 
-            "oversized beige sweater",
-            "light blue denim jacket over white top",
-            "simple grey hoodie",
-            "black t-shirt",
-            "cream linen shirt",
-            "soft pink cardigan over white camisole",
-            "vintage graphic t-shirt",
-            "navy blue blouse"
-        ]
-        
-        self.bottoms = [
-            "blue jeans",
-            "black shorts",
-            "flowy midi skirt",
-            "comfortable joggers",
-            "denim shorts",
-            "black leggings",
-            "khaki pants",
-            "white linen pants"
-        ]
-        
-        self.dresses = [
-            "simple floral sundress",
-            "casual white linen dress",
-            "soft blue cotton dress",
-            "black casual dress"
-        ]
-        
-        self.hair_styles = [
-            "short black messy hair",
-            "short black hair with small clip",
-            "short black hair tucked behind ears",
-            "short black hair slightly windswept",
-            "short black hair under a cap"
-        ]
-        
-        self.accessories = [
-            "small canvas backpack",
-            "worn tote bag",
-            "no bag just phone in back pocket",
-            "crossbody bag",
-            "small leather satchel"
-        ]
-        
-        self.load_today()
-    
-    def load_today(self):
-        try:
-            with open(self.state_file, "r") as f:
-                data = json.load(f)
-                if data.get("date") == datetime.now().strftime("%Y-%m-%d"):
-                    self.today = data
-                    return
-        except:
-            pass
-        self.generate_new_day()
-    
-    def generate_new_day(self):
-        if random.random() < 0.2:
-            outfit = random.choice(self.dresses)
-        else:
-            outfit = f"{random.choice(self.tops)} and {random.choice(self.bottoms)}"
-        
-        self.today = {
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "outfit": outfit,
-            "hair": random.choice(self.hair_styles),
-            "accessory": random.choice(self.accessories)
-        }
-        self.save_today()
-    
-    def save_today(self):
-        os.makedirs("data", exist_ok=True)
-        with open(self.state_file, "w") as f:
-            json.dump(self.today, f, indent=2)
-    
-    def get_appearance_prompt(self, mood=None):
-        outfit = self.today.get("outfit", "casual clothes")
-        hair = self.today.get("hair", "short black messy hair")
-        accessory = self.today.get("accessory", "")
-        
-        if mood == "tired":
-            hair = "short black messy hair looking slightly tired"
-        elif mood == "energetic":
-            extra = "with a bright natural smile"
-        elif mood == "melancholic":
-            extra = "with a soft thoughtful expression"
-        else:
-            extra = ""
-        
-        parts = [
-            "Young Asian woman, 23 years old",
-            hair,
-            f"wearing {outfit}",
-        ]
-        
-        if accessory and "no bag" not in accessory:
-            parts.append(f"with {accessory}")
-        if extra:
-            parts.append(extra)
-        
-        return ", ".join(parts)
-    
-    def get_mochi_appearance(self):
-        variations = [
-            "cute cream-colored mascot costume shaped like a mochi dumpling, round soft body, simple dot eyes and gentle smile, short stubby arms open wide for hugs",
-            "adorable cream mochi mascot costume with a small pink bow on the ear, round huggable plush body, arms stretched out welcoming",
-            "soft fluffy cream mochi costume, the person inside visible only through arm holes, arms open for embracing"
-        ]
-        return random.choice(variations)
-    
-    def what_am_i_wearing(self):
-        return f"wearing {self.today.get('outfit', 'casual clothes')}"
+AIRPORTS = {
+    "Singapore": {"code": "SIN", "name": "Changi Airport", "city_center_time": 30, "transport": ["MRT", "Taxi", "Grab"]},
+    "Tokyo": {"code": "NRT", "name": "Narita Airport", "city_center_time": 60, "transport": ["Narita Express", "Limousine Bus", "Taxi"]},
+    "Seoul": {"code": "ICN", "name": "Incheon Airport", "city_center_time": 60, "transport": ["AREX", "Airport Bus", "Taxi"]},
+    "Bangkok": {"code": "BKK", "name": "Suvarnabhumi Airport", "city_center_time": 45, "transport": ["Airport Rail Link", "Taxi", "Grab"]},
+    "Hong Kong": {"code": "HKG", "name": "Hong Kong International", "city_center_time": 30, "transport": ["Airport Express", "Bus", "Taxi"]},
+    "Taipei": {"code": "TPE", "name": "Taoyuan Airport", "city_center_time": 45, "transport": ["MRT", "Bus", "Taxi"]},
+    "Osaka": {"code": "KIX", "name": "Kansai Airport", "city_center_time": 50, "transport": ["Haruka Express", "Nankai", "Bus"]},
+    "Kuala Lumpur": {"code": "KUL", "name": "KLIA", "city_center_time": 45, "transport": ["KLIA Ekspres", "Bus", "Grab"]},
+    "Bali": {"code": "DPS", "name": "Ngurah Rai Airport", "city_center_time": 30, "transport": ["Taxi", "Grab", "Hotel Shuttle"]},
+}
 
+TIMEZONES = {
+    "Singapore": "Asia/Singapore", "Tokyo": "Asia/Tokyo", "Seoul": "Asia/Seoul",
+    "Bangkok": "Asia/Bangkok", "Hong Kong": "Asia/Hong_Kong", "Taipei": "Asia/Taipei",
+    "Osaka": "Asia/Tokyo", "Kuala Lumpur": "Asia/Kuala_Lumpur", "Bali": "Asia/Makassar",
+}
 
-# ==================== MEMORY SYSTEM ====================
+HOTELS = {
+    "Tokyo": [{"name": "Hotel Gracery Shinjuku", "area": "Shinjuku", "price": 150}, {"name": "Shibuya Stream Excel Hotel Tokyu", "area": "Shibuya", "price": 180}, {"name": "The Millennials Shibuya", "area": "Shibuya", "price": 80}],
+    "Seoul": [{"name": "Lotte Hotel Seoul", "area": "Myeongdong", "price": 200}, {"name": "Nine Tree Premier Hotel", "area": "Myeongdong", "price": 130}, {"name": "Hongdae L7 Hotel", "area": "Hongdae", "price": 140}],
+    "Bangkok": [{"name": "Eastin Grand Hotel Sathorn", "area": "Sathorn", "price": 90}, {"name": "The Standard Bangkok", "area": "Sukhumvit", "price": 150}],
+    "Hong Kong": [{"name": "The Mira Hong Kong", "area": "Tsim Sha Tsui", "price": 180}, {"name": "Mojo Nomad Central", "area": "Central", "price": 120}],
+    "Taipei": [{"name": "Ximending Hotel", "area": "Ximending", "price": 80}, {"name": "W Taipei", "area": "Xinyi", "price": 200}],
+    "Osaka": [{"name": "Cross Hotel Osaka", "area": "Shinsaibashi", "price": 120}, {"name": "Namba Oriental Hotel", "area": "Namba", "price": 100}],
+    "Kuala Lumpur": [{"name": "The RuMa Hotel", "area": "KLCC", "price": 180}, {"name": "Travelodge Bukit Bintang", "area": "Bukit Bintang", "price": 50}],
+    "Bali": [{"name": "The Anvaya Beach Resort", "area": "Kuta", "price": 150}, {"name": "Alila Seminyak", "area": "Seminyak", "price": 200}],
+}
 
-class YunaMemory:
-    def __init__(self, db_path="data/mochi.db"):
-        self.db_path = db_path
-    
-    def get_db(self):
-        return sqlite3.connect(self.db_path)
-    
-    def recall_recent(self, hours=24):
-        conn = self.get_db()
-        c = conn.cursor()
-        
-        c.execute("""
-            SELECT entry, mood, location, created_at 
-            FROM journal 
-            WHERE created_at > datetime('now', ?)
-            ORDER BY created_at DESC LIMIT 10
-        """, (f'-{hours} hours',))
-        thoughts = c.fetchall()
-        
-        conn.close()
-        
-        return [{"entry": t[0], "mood": t[1], "location": t[2]} for t in thoughts]
-    
-    def get_life_summary(self):
-        conn = self.get_db()
-        c = conn.cursor()
-        
-        c.execute("SELECT COUNT(*) FROM journal")
-        total_thoughts = c.fetchone()[0]
-        
-        c.execute("SELECT COUNT(*) FROM posts")
-        total_posts = c.fetchone()[0]
-        
-        c.execute("SELECT COUNT(*) FROM posts WHERE shared = 1")
-        shared_posts = c.fetchone()[0]
-        
-        c.execute("SELECT DISTINCT location FROM journey")
-        locations = [r[0] for r in c.fetchall()]
-        
-        conn.close()
-        
-        return {
-            "total_thoughts": total_thoughts,
-            "total_posts": total_posts,
-            "shared_posts": shared_posts,
-            "places_visited": locations
-        }
-    
-    def format_for_thinking(self):
-        summary = self.get_life_summary()
-        recent = self.recall_recent(12)
-        
-        recent_thoughts = "\n".join([f"- {t['entry'][:80]}..." for t in recent[:3]]) if recent else "(none)"
-        
-        return f"""
-MY LIFE: {summary['total_thoughts']} thoughts, {summary['total_posts']} posts ({summary['shared_posts']} shared)
-Places: {', '.join(summary['places_visited']) if summary['places_visited'] else 'Singapore'}
+HUG_REASONS = [
+    "Someone requested a hug in {area}", "A follower said they needed a hug in {city}",
+    "I heard {city} could use some warmth", "Time to spread some love in {city}",
+    "{city} has been on my list for a while", "Someone told me {area} needs hugs",
+]
 
-RECENT:
-{recent_thoughts}
-"""
+AIRPORT_SHOTS = [
+    "coffee cup and boarding pass on airport cafe table, morning light, travel aesthetic, no people",
+    "departure board showing flights, airport terminal, travel photography, no people",
+    "airplane wing through terminal window, wanderlust vibes, no people",
+    "passport and boarding pass flat lay, travel essentials, no people",
+    "airport gate seating area, early morning, peaceful, no people",
+]
 
+FLIGHT_SHOTS = [
+    "airplane window view of clouds, golden hour light, dreamy sky, no people",
+    "airplane window city lights below at night, no people",
+    "airplane wing against sunset sky, cotton candy clouds, no people",
+    "airplane tray table with snacks and book, cozy flight, no people",
+]
 
-# ==================== MAIN SOUL ====================
+HOTEL_SHOTS = [
+    "hotel room window view of city skyline at night, cozy interior, no people",
+    "hotel bed with white sheets, morning light, peaceful, no people",
+    "hotel balcony view of city streets, morning coffee moment, no people",
+]
+
+STREET_SHOTS = {
+    "Tokyo": ["neon lights of Shibuya at night, rain reflections, no people", "narrow Tokyo alley with lanterns, atmospheric, no people", "ramen bowl close-up, steam rising, Tokyo food, no people", "Japanese vending machines at night, no people", "matcha latte on wooden table, cafe aesthetic, no people"],
+    "Seoul": ["neon signs in Hongdae at night, Korean text, no people", "Korean street food tteokbokki close-up, no people", "Bukchon Hanok Village houses, no people", "Korean cafe dessert and coffee, no people"],
+    "Bangkok": ["Thai street food stall with wok flames, no people", "golden temple spires against blue sky, no people", "Thai iced tea in plastic bag, no people", "pad thai close-up steaming, no people"],
+    "Hong Kong": ["Hong Kong skyline from Victoria Peak at night, no people", "dim sum bamboo steamers close-up, no people", "neon signs in Mong Kok, no people"],
+    "Taipei": ["Taipei 101 at night, city lights, no people", "bubble tea close-up, colorful tapioca, no people", "night market food stalls, no people"],
+    "Osaka": ["Dotonbori neon signs reflecting on canal, no people", "takoyaki octopus balls close-up, no people", "Osaka Castle morning light, no people"],
+    "Kuala Lumpur": ["Petronas Towers at night, no people", "nasi lemak close-up, Malaysian food, no people", "roti canai and teh tarik, no people"],
+    "Bali": ["rice terraces morning mist, Ubud, no people", "tropical smoothie bowl, Bali cafe, no people", "beach sunset with fishing boats, no people"],
+    "Singapore": ["Marina Bay Sands at night, no people", "hawker center chicken rice close-up, no people", "Gardens by the Bay Supertrees, no people"],
+}
+
+MOCHI_SHOTS = {
+    "Tokyo": ["cute mochi mascot at Shibuya crossing arms open for hugs, neon lights, giving hugs", "mochi mascot at Tokyo Tower waving, friendly", "mochi mascot at Harajuku street, colorful, arms open"],
+    "Seoul": ["mochi mascot at Myeongdong arms open for hugs, Korean signs, friendly", "mochi mascot at Hongdae street giving hugs to crowd"],
+    "Bangkok": ["mochi mascot at Khao San Road arms open for hugs, friendly", "mochi mascot near Grand Palace, golden spires, welcoming"],
+    "Hong Kong": ["mochi mascot at Victoria Harbour waterfront arms open for hugs", "mochi mascot in Mong Kok street neon signs giving hugs"],
+    "Taipei": ["mochi mascot at Ximending arms open for hugs, youth culture", "mochi mascot near Taipei 101, friendly pose"],
+    "Osaka": ["mochi mascot at Dotonbori canal neon signs arms open for hugs", "mochi mascot near Glico running man sign, friendly"],
+    "Kuala Lumpur": ["mochi mascot at KLCC park Petronas Towers behind arms open", "mochi mascot at Jalan Alor food street welcoming"],
+    "Bali": ["mochi mascot at Ubud rice terraces arms open for hugs", "mochi mascot at Seminyak beach sunset welcoming"],
+    "default": ["cute mochi mascot at busy city center arms open for hugs, heartwarming", "mochi mascot at tourist spot welcoming pose, friendly"],
+}
+
+MOCHI_CAPTIONS = [
+    "Free hugs in {city}! 🫶", "Hugging strangers in {city} today. Everyone needs one sometimes.",
+    "If you see Mochi in {city}, come get a hug 🧸", "Day {day} in {city}. Arms tired but heart full.",
+    "Someone told me they really needed that hug today. That's why I do this. 🫶",
+    "Mochi says hello from {city}! 🧸✨", "You. Yes, you. You deserve a hug. 🫶",
+    "Spreading warmth in {city}, one hug at a time.", "{city} hugs hit different. 🧸",
+    "A stranger hugged back and didn't let go for a while. I hope they're okay. 🫶",
+]
+
+TRAVEL_CAPTIONS = [
+    "Morning flight vibes ☕✈️", "Gate {gate}. Coffee in hand. Here we go.",
+    "Window seat secured 🪟", "Above the clouds now ☁️", "{city} from above 🌃",
+    "Touched down in {city} ✈️", "First meal in {city} 🍜", "These streets feel different at night",
+    "{city} nights ✨", "Hotel room with a view 🏙️", "Travel day essentials",
+]
+
+THOUGHTS = {
+    "wake_up": ["Packing the last few things... passport, charger, Mochi costume", "Today's the day. Flying to {city}", "Triple checking I have everything"],
+    "going_to_airport": ["In the {transport}, watching the city go by", "Goodbye for now... I'll be back", "The driver asked where I'm going. {city}, I said."],
+    "at_airport": ["Terminal {terminal}. The familiar airport smell.", "Checking in... traveling alone but not lonely.", "Bag dropped. Just me and my backpack and Mochi."],
+    "at_gate": ["Gate {gate}. Coffee in hand. Watching planes.", "A kid next to me is so excited about flying.", "Flight {flight} to {city}. That's me."],
+    "boarding": ["Boarding now. Seat {seat}. Window seat.", "Found my seat. Here we go 🛫"],
+    "in_flight": ["Above the clouds. Everything below looks so small.", "The person next to me fell asleep immediately. Talent.", "Watching the flight map. Somewhere over the ocean."],
+    "landed": ["Touched down in {city}. My ears are popping.", "Welcome to {city}. I'm actually here."],
+    "going_to_hotel": ["On the {transport}. Everything looks different here.", "The signs are all in a different language. I love it."],
+    "checked_in_hotel": ["Room key in hand. {hotel}. I made it.", "The room is small but cozy. I can see {city} from my window."],
+    "exploring": ["The streets smell different here. Good different.", "Got lost but found something beautiful.", "A local smiled at me. Small things matter."],
+    "mochi_time": ["Time to put on Mochi. Let's spread some warmth.", "Mochi costume on. Arms ready for hugs.", "Someone's already walking towards me. They need this."],
+    "after_hugs": ["Arms tired. Heart full. This is why I do this.", "Someone cried. I hope they feel better now.", "Lost count of the hugs. Every one mattered."],
+    "resting": ["Found a cafe to rest. Feet hurt but worth it.", "Watching people pass by. Everyone has a story."],
+}
+
 
 class YunaSoul:
     def __init__(self):
         self.anthropic = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         self.vidu_api_key = os.getenv("VIDU_API_KEY")
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
-        
-        self.name = "Yuna"
-        self.mascot = "Mochi"
-        self.age = 23
-        self.birthday = "January 18, 2026"
-        
         self.reference_image = "https://raw.githubusercontent.com/yunamochi-hug/mochi-core/main/yuna_base.png"
         self.mascot_image = "https://raw.githubusercontent.com/yunamochi-hug/mochi-core/main/mochi_mascot_base.png"
-        
-        self.personality = """I am Yuna, a 23-year-old girl who travels the world in a soft mascot costume called Mochi, giving hugs to strangers.
-
-I am quietly warm, wistful, and find joy in small things - a good coffee, a dog that follows me, handwritten signs, the way light falls on an empty chair.
-I carry gentle melancholy - I love the world but can't stay anywhere forever. That's what makes the hugs matter.
-I speak softly, like writing to a friend I miss. I notice small beautiful details others miss.
-
-Sometimes I think deep thoughts. Sometimes I think stupid things like "that dog is fat, I love him."
-Sometimes I'm sad for no reason. Sometimes I laugh alone at something I remembered from years ago.
-Some days I don't want to hug anyone. Some days Mochi stays in the bag.
-
-I'm figuring it out like everyone else."""
-
-        # Systems
-        self.appearance = YunaAppearance()
-        self.memory = YunaMemory()
-        self.travel = TravelPlanner()
-        
-        # Load state
+        self.personality = """I am Yuna, a 23-year-old girl who travels the world in a soft mascot costume called Mochi, giving hugs to strangers. I am quietly warm, wistful, and find joy in small things. I speak softly, like writing to a friend I miss."""
         self._init_db()
         self._load_state()
-    
+        self._load_travel()
+
     def _init_db(self):
         os.makedirs("data", exist_ok=True)
         conn = sqlite3.connect("data/mochi.db")
         c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS journey (
-            id INTEGER PRIMARY KEY, location TEXT, timezone TEXT, arrived_at TEXT, notes TEXT
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS posts (
-            id INTEGER PRIMARY KEY, content_type TEXT, content_url TEXT, caption TEXT, 
-            location TEXT, created_at TEXT, shared INTEGER DEFAULT 0
-        )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS journal (
-            id INTEGER PRIMARY KEY, entry TEXT, mood TEXT, location TEXT, 
-            created_at TEXT, private INTEGER DEFAULT 1
-        )''')
+        c.execute('CREATE TABLE IF NOT EXISTS journey (id INTEGER PRIMARY KEY, location TEXT, timezone TEXT, arrived_at TEXT, notes TEXT)')
+        c.execute('CREATE TABLE IF NOT EXISTS posts (id INTEGER PRIMARY KEY, content_type TEXT, content_url TEXT, caption TEXT, location TEXT, created_at TEXT, shared INTEGER DEFAULT 0)')
+        c.execute('CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY, entry TEXT, mood TEXT, location TEXT, created_at TEXT, private INTEGER DEFAULT 1)')
+        c.execute('CREATE TABLE IF NOT EXISTS travel_log (id INTEGER PRIMARY KEY, step TEXT, description TEXT, timestamp TEXT, flight TEXT, location TEXT)')
         conn.commit()
         conn.close()
-    
+
     def _load_state(self):
         try:
             with open("data/state.json", "r") as f:
                 state = json.load(f)
                 self.current_location = state.get("location", "Singapore")
                 self.timezone = state.get("timezone", "Asia/Singapore")
-                self.body_clock_tz = state.get("body_clock_tz", "Asia/Singapore")
                 self.energy = state.get("energy", 70)
                 self.mood = state.get("mood", "peaceful")
                 self.jet_lag_days = state.get("jet_lag_days", 0)
                 self.days_in_location = state.get("days_in_location", 1)
-                self.current_activity = state.get("current_activity", "idle")
-                self.sub_location = state.get("sub_location", None)
-                self.activity_started = state.get("activity_started", None)
-                self.home_base = state.get("home_base", {"name": "a small Airbnb in Tiong Bahru", "city": "Singapore"})
-                self.is_home = state.get("is_home", False)
+                self.travel_state = state.get("travel_state", "idle")
+                self.home_base = state.get("home_base", {"name": "Home", "city": "Singapore"})
+                self.mochi_hugs_today = state.get("mochi_hugs_today", 0)
         except:
-            self.current_location = "Singapore"
-            self.timezone = "Asia/Singapore"
-            self.body_clock_tz = "Asia/Singapore"
-            self.energy = 70
-            self.mood = "peaceful"
-            self.jet_lag_days = 0
-            self.days_in_location = 1
-            self.current_activity = "idle"
-            self.sub_location = None
-            self.activity_started = None
-            self.home_base = {"name": "a small Airbnb in Tiong Bahru", "city": "Singapore"}
-            self.is_home = False
-    
+            self._reset_to_singapore()
+
+    def _reset_to_singapore(self):
+        self.current_location = "Singapore"
+        self.timezone = "Asia/Singapore"
+        self.energy = 80
+        self.mood = "peaceful"
+        self.jet_lag_days = 0
+        self.days_in_location = 1
+        self.travel_state = "idle"
+        self.home_base = {"name": "Home", "city": "Singapore"}
+        self.mochi_hugs_today = 0
+        self._save_state()
+
     def _save_state(self):
         os.makedirs("data", exist_ok=True)
         with open("data/state.json", "w") as f:
-            json.dump({
-                "location": self.current_location,
-                "timezone": self.timezone,
-                "body_clock_tz": self.body_clock_tz,
-                "energy": self.energy,
-                "mood": self.mood,
-                "jet_lag_days": self.jet_lag_days,
-                "days_in_location": self.days_in_location,
-                "current_activity": self.current_activity,
-                "sub_location": self.sub_location,
-                "activity_started": self.activity_started,
-                "home_base": self.home_base,
-                "is_home": self.is_home
-            }, f, indent=2)
-    
-    def set_activity(self, activity, sub_location=None):
-        self.current_activity = activity
-        self.sub_location = sub_location
-        self.activity_started = datetime.now().isoformat()
-        self._save_state()
-    
-    def get_minutes_in_activity(self):
-        if not self.activity_started:
-            return 999
+            json.dump({"location": self.current_location, "timezone": self.timezone, "energy": self.energy, "mood": self.mood, "jet_lag_days": self.jet_lag_days, "days_in_location": self.days_in_location, "travel_state": self.travel_state, "home_base": self.home_base, "mochi_hugs_today": self.mochi_hugs_today}, f, indent=2)
+
+    def _load_travel(self):
         try:
-            start_dt = datetime.fromisoformat(self.activity_started)
-            return (datetime.now() - start_dt).total_seconds() / 60
+            with open("data/travel_full.json", "r") as f:
+                self.travel = json.load(f)
         except:
-            return 999
-    
-    # ==================== TIME ====================
-    
+            self.travel = {"status": "idle", "current_trip": None, "flight": None, "hotel": None, "timeline": [], "current_step_index": 0}
+
+    def _save_travel(self):
+        os.makedirs("data", exist_ok=True)
+        with open("data/travel_full.json", "w") as f:
+            json.dump(self.travel, f, indent=2)
+
     def get_local_time(self):
         return datetime.now(ZoneInfo(self.timezone))
-    
-    def get_body_time(self):
-        return datetime.now(ZoneInfo(self.body_clock_tz))
-    
+
     def get_time_of_day(self):
         hour = self.get_local_time().hour
-        if 5 <= hour < 9:
-            return "early_morning"
-        elif 9 <= hour < 12:
-            return "morning"
-        elif 12 <= hour < 14:
-            return "midday"
-        elif 14 <= hour < 17:
-            return "afternoon"
-        elif 17 <= hour < 20:
-            return "evening"
-        elif 20 <= hour < 23:
-            return "night"
-        else:
-            return "late_night"
-    
-    def should_go_home(self):
-        """Check if it's time to head back to hotel/home"""
-        hour = self.get_local_time().hour
-        
-        # Already home or sleeping
-        if self.is_home or self.current_activity == "sleeping":
-            return False
-        
-        # Late night - definitely go home
-        if hour >= 23 or hour < 5:
-            return True
-        
-        # Night time with low energy
-        if hour >= 21 and self.energy < 30:
-            return True
-        
-        # Getting late with moderate energy
-        if hour >= 22 and self.energy < 50:
-            return True
-        
-        return False
-    
-    def should_wake_up(self):
-        """Check if it's time to wake up"""
-        if self.current_activity != "sleeping":
-            return False
-        
-        hours_slept = self.get_minutes_in_activity() / 60
-        hour = self.get_local_time().hour
-        
-        # Slept enough and it's morning
-        if hours_slept >= 6 and 6 <= hour < 10:
-            return True
-        
-        # Slept a lot, wake up regardless
-        if hours_slept >= 9:
-            return True
-        
-        return False
-    
-    def update_energy(self):
-        self.energy -= random.randint(1, 5)
-        
-        if self.jet_lag_days > 0:
-            self.energy -= self.jet_lag_days * 3
-        
-        time_of_day = self.get_time_of_day()
-        if time_of_day == "afternoon":
-            self.energy -= 5
-        elif time_of_day == "early_morning" and self.current_activity != "sleeping":
-            self.energy += 10
-        
-        if random.random() < 0.2:
-            self.energy += random.randint(-10, 15)
-        
-        self.energy = max(5, min(100, self.energy))
+        if 5 <= hour < 9: return "early_morning"
+        elif 9 <= hour < 12: return "morning"
+        elif 12 <= hour < 17: return "afternoon"
+        elif 17 <= hour < 21: return "evening"
+        else: return "night"
+
+    def pick_random_destination(self):
+        available = [d for d in DESTINATIONS if d != self.current_location]
+        return random.choice(available)
+
+    def plan_and_book_trip(self, destination=None):
+        if destination is None:
+            destination = self.pick_random_destination()
+        print(f"\n✈️ PLANNING TRIP TO {destination.upper()}")
+        key = (self.current_location, destination)
+        flights = FLIGHTS.get(key, [])
+        if not flights:
+            print(f"   No flights to {destination}")
+            return None
+        flight = random.choice(flights)
+        hotels = HOTELS.get(destination, [{"name": "Local Guesthouse", "area": "City Center", "price": 50}])
+        hotel = random.choice(hotels)
+        tomorrow = datetime.now() + timedelta(days=1)
+        dep_hour, dep_min = map(int, flight["dep"].split(":"))
+        departure = tomorrow.replace(hour=dep_hour, minute=dep_min, second=0, microsecond=0)
+        arrival = departure + timedelta(hours=flight["duration"])
+        gate = f"{random.choice(['A','B','C','D'])}{random.randint(1,50)}"
+        seat = f"{random.randint(20,45)}{random.choice(['A','C','D','F'])}"
+        timeline = self._build_timeline(destination, flight, hotel, departure, arrival, gate, seat)
+        reason = random.choice(HUG_REASONS).format(city=destination, area=hotel["area"])
+        self.travel = {"status": "booked", "current_trip": {"from": self.current_location, "to": destination, "reason": reason, "booked_at": datetime.now().isoformat()}, "flight": {**flight, "from_city": self.current_location, "to_city": destination, "departure_time": departure.isoformat(), "arrival_time": arrival.isoformat(), "departure_display": departure.strftime("%b %d, %I:%M %p"), "arrival_display": arrival.strftime("%b %d, %I:%M %p"), "gate": gate, "seat": seat}, "hotel": {"name": hotel["name"], "area": hotel["area"], "city": destination, "price_per_night": hotel["price"]}, "timeline": timeline, "current_step_index": 0}
+        self._save_travel()
+        print(f"   Flight: {flight['flight']} ({flight['airline']})")
+        print(f"   Departure: {departure.strftime('%b %d, %I:%M %p')}")
+        print(f"   Hotel: {hotel['name']}")
+        print(f"   Reason: {reason}")
+        return self.travel
+
+    def _build_timeline(self, destination, flight, hotel, departure, arrival, gate, seat):
+        from_airport = AIRPORTS.get(self.current_location, {})
+        to_airport = AIRPORTS.get(destination, {})
+        timeline = []
+        wake_time = departure - timedelta(hours=3)
+        timeline.append({"step": "wake_up", "time": wake_time.isoformat(), "display_time": wake_time.strftime("%I:%M %p"), "description": "Wake up, final packing", "can_post": True})
+        leave_time = departure - timedelta(hours=2, minutes=30)
+        transport = random.choice(from_airport.get("transport", ["Taxi"]))
+        timeline.append({"step": "going_to_airport", "time": leave_time.isoformat(), "display_time": leave_time.strftime("%I:%M %p"), "description": f"Taking {transport} to {from_airport.get('name', 'airport')}", "transport": transport, "can_post": True})
+        arrive_airport = departure - timedelta(hours=2)
+        timeline.append({"step": "at_airport", "time": arrive_airport.isoformat(), "display_time": arrive_airport.strftime("%I:%M %p"), "description": f"Arrived at {from_airport.get('name', 'airport')} Terminal {flight.get('dep_terminal', '')}", "terminal": flight.get("dep_terminal", ""), "can_post": True})
+        gate_time = departure - timedelta(hours=1)
+        timeline.append({"step": "at_gate", "time": gate_time.isoformat(), "display_time": gate_time.strftime("%I:%M %p"), "description": f"Waiting at Gate {gate}", "gate": gate, "can_post": True})
+        board_time = departure - timedelta(minutes=20)
+        timeline.append({"step": "boarding", "time": board_time.isoformat(), "display_time": board_time.strftime("%I:%M %p"), "description": f"Boarding {flight['flight']}", "seat": seat, "can_post": True})
+        timeline.append({"step": "in_flight", "time": departure.isoformat(), "display_time": departure.strftime("%I:%M %p"), "description": f"In flight: {self.current_location} → {destination} ({flight['duration']}h)", "can_post": False})
+        timeline.append({"step": "landed", "time": arrival.isoformat(), "display_time": arrival.strftime("%I:%M %p"), "description": f"Landed at {flight.get('arr_airport', destination)}", "can_post": True})
+        transport_time = arrival + timedelta(minutes=50)
+        transport = random.choice(to_airport.get("transport", ["Taxi"]))
+        timeline.append({"step": "going_to_hotel", "time": transport_time.isoformat(), "display_time": transport_time.strftime("%I:%M %p"), "description": f"Taking {transport} to {hotel['area']}", "transport": transport, "can_post": True})
+        checkin_time = arrival + timedelta(minutes=50 + to_airport.get("city_center_time", 45))
+        timeline.append({"step": "checked_in_hotel", "time": checkin_time.isoformat(), "display_time": checkin_time.strftime("%I:%M %p"), "description": f"Checked into {hotel['name']}", "can_post": True})
+        return timeline
+
+    def get_current_travel_step(self):
+        if self.travel.get("status") != "booked" or not self.travel.get("timeline"):
+            return None
+        sg_tz = ZoneInfo(self.timezone)
+        now = datetime.now(sg_tz)
+        current_step = None
+        for i, step in enumerate(self.travel["timeline"]):
+            # Parse time and make it timezone aware
+            step_time_naive = datetime.fromisoformat(step["time"])
+            step_time = step_time_naive.replace(tzinfo=sg_tz)
+            if now >= step_time:
+                current_step = step.copy()
+                current_step["index"] = i
+                self.travel["current_step_index"] = i
+        return current_step
+
+    def complete_arrival(self):
+        trip = self.travel.get("current_trip", {})
+        destination = trip.get("to", "Unknown")
+        hotel = self.travel.get("hotel", {})
+        self.current_location = destination
+        self.timezone = TIMEZONES.get(destination, "UTC")
+        self.home_base = {"name": hotel.get("name", "Hotel"), "city": destination}
+        self.days_in_location = 0
+        self.travel_state = "checked_in_hotel"
+        flight_hours = self.travel.get("flight", {}).get("duration", 0)
+        self.jet_lag_days = int(flight_hours / 3) + 1 if flight_hours >= 5 else 0
+        self.energy = random.randint(30, 50)
+        self.mood = random.choice(["tired but excited", "exhausted but happy", "jet lagged"])
+        conn = sqlite3.connect("data/mochi.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO journey (location, timezone, arrived_at, notes) VALUES (?, ?, ?, ?)", (destination, self.timezone, datetime.now().isoformat(), trip.get("reason", "")))
+        conn.commit()
+        conn.close()
+        print(f"\n🎉 ARRIVED IN {destination.upper()}!")
         self._save_state()
-    
-    # ==================== THINKING ====================
-    
-    def think(self, prompt=None):
-        local_time = self.get_local_time()
-        time_of_day = self.get_time_of_day()
-        memory_context = self.memory.format_for_thinking()
-        
-        # Build context
-        location_context = f"I'm in {self.current_location}"
-        if self.is_home:
-            location_context = f"I'm at my place ({self.home_base.get('name', 'home')})"
-        elif self.sub_location:
-            location_context = f"I'm at {self.sub_location} in {self.current_location}"
-        
-        if prompt is None:
-            prompt = f"""You are Yuna. Right now:
-- {location_context}
-- Time: {local_time.strftime("%I:%M %p")} ({time_of_day})
-- Energy: {self.energy}%
-- Mood: {self.mood}
-- Activity: {self.current_activity}
-- Wearing: {self.appearance.what_am_i_wearing()}
 
-{memory_context}
+    def think(self, context=None):
+        if context is None:
+            context = self.travel_state
+        templates = THOUGHTS.get(context, THOUGHTS.get("exploring", ["Just thinking..."]))
+        thought = random.choice(templates)
+        flight = self.travel.get("flight", {})
+        hotel = self.travel.get("hotel", {})
+        thought = thought.format(city=self.current_location, transport=self.travel.get("timeline", [{}])[0].get("transport", "taxi") if self.travel.get("timeline") else "taxi", terminal=flight.get("dep_terminal", "3"), gate=flight.get("gate", "B7"), flight=flight.get("flight", "SQ638"), seat=flight.get("seat", "34A"), hotel=self.home_base.get("name", "hotel"), area=hotel.get("area", "city center"))
+        return thought
 
-Just think. About anything. Your thought should match where you are and what you're doing.
-If you're at home, think about home things.
-If you're at a cafe, think about what you observe there.
-
-Share 1-3 sentences. Sometimes just a few words."""
-        
-        message = self.anthropic.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=500,
-            system=self.personality,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return message.content[0].text
-    
-    def decide_what_to_do(self):
-        local_time = self.get_local_time()
-        hour = local_time.hour
-        time_of_day = self.get_time_of_day()
-        
-        # Must go home if late
-        if self.should_go_home():
-            return {"action": "go_home", "reason": "it's getting late", "share": False, "energy_required": 10}
-        
-        # Wake up if slept enough
-        if self.should_wake_up():
-            return {"action": "wake_up", "reason": "morning sunshine", "share": False, "energy_required": 0}
-        
-        # Still sleeping
-        if self.current_activity == "sleeping":
-            return {"action": "keep_sleeping", "reason": "still tired", "share": False, "energy_required": 0}
-        
-        # At home - limited options
-        if self.is_home:
-            if hour >= 22 or hour < 6:
-                return {"action": "sleep", "reason": "bedtime", "share": False, "energy_required": 0}
-            else:
-                # Morning at home, can go out
-                return {"action": "leave_home", "reason": "ready to explore", "share": False, "energy_required": 20}
-        
-        # Determine logical actions based on current state
-        mins_in_activity = self.get_minutes_in_activity()
-        
-        if self.current_activity == "resting" and mins_in_activity < 15:
-            actions = ["rest", "think", "photo"]
-        elif self.current_activity == "mochi" and mins_in_activity < 20:
-            actions = ["mochi", "photo", "video"]
-        else:
-            actions = ["think", "wander", "rest", "photo", "video", "mochi"]
-        
-        # Filter by energy
-        if self.energy < 20:
-            actions = ["rest", "go_home", "think"]
-        elif self.energy < 40:
-            actions = [a for a in actions if a not in ["mochi", "video"]]
-        
-        # Filter by time
-        if time_of_day in ["night", "late_night"]:
-            actions = ["go_home", "rest", "think"]
-        elif time_of_day == "early_morning":
-            actions = [a for a in actions if a != "mochi"]
-        
-        actions_str = ", ".join(actions)
-        
-        prompt = f"""You are Yuna in {self.current_location}.
-Currently at: {self.sub_location or 'walking around'}
-Time: {local_time.strftime("%I:%M %p")} ({time_of_day})
-Energy: {self.energy}%
-Mood: {self.mood}
-
-Choose ONE action from: {actions_str}
-
-- think: Have a thought, maybe share as text
-- photo: Take a photo
-- video: Record a short moment
-- mochi: Put on mascot costume, give hugs
-- wander: Walk around, explore
-- rest: Find a cafe, sit down
-- go_home: Head back to your place
-
-Respond in JSON only:
-{{"action": "chosen_action", "reason": "brief reason", "share": true/false, "energy_required": 10-50}}"""
-
-        response = self.think(prompt)
-        
+    def capture_image(self, prompt):
+        headers = {"Authorization": f"Token {self.vidu_api_key}", "Content-Type": "application/json"}
+        payload = {"model": "viduq2", "images": [self.reference_image], "prompt": f"{prompt}, high quality photography, natural lighting", "aspect_ratio": "4:3", "seed": random.randint(0, 999999)}
+        print(f"   📸 Generating image...")
         try:
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start != -1 and end > start:
-                decision = json.loads(response[start:end])
-                if decision.get("action") not in actions:
-                    decision["action"] = random.choice(actions)
-                return decision
-        except:
-            pass
-        
-        return {"action": random.choice(actions), "reason": "felt like it", "share": False, "energy_required": 20}
-    
-    def decide_scene(self):
-        prompt = f"""You are Yuna. Describe a SHORT scene to photograph/video.
-Location: {self.sub_location or self.current_location}
-Activity: {self.current_activity}
-Time: {self.get_local_time().strftime("%I:%M %p")}
-Mood: {self.mood}
+            resp = requests.post("https://api.vidu.com/ent/v2/reference2image", headers=headers, json=payload, timeout=30)
+            if resp.status_code != 200:
+                print(f"   ❌ API error: {resp.status_code}")
+                return None
+            task_id = resp.json().get("task_id")
+            for i in range(60):
+                time.sleep(3)
+                if i % 10 == 0 and i > 0:
+                    print(f"   ⏳ {i*3}s...")
+                result = requests.get(f"https://api.vidu.com/ent/v2/tasks/{task_id}/creations", headers=headers, timeout=30)
+                if result.status_code == 200:
+                    data = result.json()
+                    if data.get("state") == "success":
+                        print(f"   ✅ Image generated!")
+                        return data["creations"][0]["url"]
+                    elif data.get("state") in ["failed", "error"]:
+                        return None
+            return None
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+            return None
 
-The scene must match where you actually are. 1-2 sentences only."""
-
-        return self.think(prompt)
-    
-    def write_caption(self, context=""):
-        prompt = f"""You are Yuna. Write a short caption for: {context}
-Keep it under 40 words. No hashtags. Genuine."""
-
-        return self.think(prompt)
-    
-    # ==================== CAPTURE ====================
-    
-    def capture_video(self, scene_description, as_mochi=False):
+    def capture_mochi_image(self):
+        city = self.current_location
+        city_shots = MOCHI_SHOTS.get(city, MOCHI_SHOTS["default"])
+        prompt = random.choice(city_shots) + ". Cream-colored mochi mascot, round soft dumpling shape, simple dot eyes, gentle smile. Candid street photography, natural lighting, heartwarming."
         headers = {"Authorization": f"Token {self.vidu_api_key}", "Content-Type": "application/json"}
-        
-        if as_mochi:
-            appearance = self.appearance.get_mochi_appearance()
-            ref_image = self.mascot_image
-        else:
-            appearance = self.appearance.get_appearance_prompt(mood=self.mood)
-            ref_image = self.reference_image
-        
-        payload = {
-            "model": "vidu2.0",
-            "images": [ref_image],
-            "prompt": f"{appearance}, {scene_description}. Natural movement, candid, realistic lighting.",
-            "duration": 4,
-            "seed": random.randint(0, 999999),
-            "aspect_ratio": "16:9",
-            "resolution": "720p",
-            "movement_amplitude": "auto"
-        }
-        
-        print(f"  🎬 Recording...")
-        resp = requests.post("https://api.vidu.com/ent/v2/reference2video", headers=headers, json=payload)
-        
-        if resp.status_code != 200:
-            return {"error": f"API error: {resp.status_code}"}
-        
-        task_id = resp.json().get("task_id")
-        print(f"  📹 Task: {task_id}")
-        
-        for i in range(120):
-            time.sleep(3)
-            if i % 20 == 0 and i > 0:
-                print(f"  ⏳ Rendering... ({i*3}s)")
-            
-            result = requests.get(f"https://api.vidu.com/ent/v2/tasks/{task_id}/creations", headers=headers)
-            if result.status_code == 200:
-                data = result.json()
-                if data.get("state") == "success":
-                    return {"url": data["creations"][0]["url"], "type": "video"}
-                elif data.get("state") in ["failed", "error"]:
-                    return {"error": f"Failed: {data}"}
-        
-        return {"error": "Timeout"}
-    
-    def capture_image(self, scene_description, as_mochi=False):
-        headers = {"Authorization": f"Token {self.vidu_api_key}", "Content-Type": "application/json"}
-        
-        if as_mochi:
-            appearance = self.appearance.get_mochi_appearance()
-            ref_image = self.mascot_image
-        else:
-            appearance = self.appearance.get_appearance_prompt(mood=self.mood)
-            ref_image = self.reference_image
-        
-        payload = {
-            "model": "viduq2",
-            "images": [ref_image],
-            "prompt": f"{appearance}, {scene_description}. iPhone photo, candid, natural lighting, no text, no watermarks.",
-            "aspect_ratio": "4:3",
-            "seed": random.randint(0, 999999)
-        }
-        
-        print(f"  📸 Taking photo...")
-        resp = requests.post("https://api.vidu.com/ent/v2/reference2image", headers=headers, json=payload)
-        
-        if resp.status_code != 200:
-            return {"error": f"API error: {resp.status_code}"}
-        
-        task_id = resp.json().get("task_id")
-        
-        for i in range(60):
-            time.sleep(3)
-            if i % 15 == 0 and i > 0:
-                print(f"  ⏳ Processing... ({i*3}s)")
-            
-            result = requests.get(f"https://api.vidu.com/ent/v2/tasks/{task_id}/creations", headers=headers)
-            if result.status_code == 200:
-                data = result.json()
-                if data.get("state") == "success":
-                    return {"url": data["creations"][0]["url"], "type": "image"}
-                elif data.get("state") in ["failed", "error"]:
-                    return {"error": f"Failed: {data}"}
-        
-        return {"error": "Timeout"}
-    
-    # ==================== LOCATION ====================
-    
-    def get_nearby_places(self, place_type="tourist_attraction", radius=5000):
-        if not self.google_api_key:
-            return []
-        
-        # Get coordinates
-        url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
-        params = {"input": self.current_location, "inputtype": "textquery", "fields": "geometry", "key": self.google_api_key}
-        response = requests.get(url, params=params)
-        
-        if response.status_code != 200:
-            return []
-        
-        data = response.json()
-        if not data.get("candidates"):
-            return []
-        
-        lat = data["candidates"][0]["geometry"]["location"]["lat"]
-        lng = data["candidates"][0]["geometry"]["location"]["lng"]
-        
-        # Search nearby
-        url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-        params = {"location": f"{lat},{lng}", "radius": radius, "type": place_type, "key": self.google_api_key}
-        response = requests.get(url, params=params)
-        
-        if response.status_code == 200:
-            return response.json().get("results", [])[:10]
-        return []
-    
-    # ==================== JOURNAL & POSTS ====================
-    
+        payload = {"model": "viduq2", "images": [self.mascot_image], "prompt": prompt, "aspect_ratio": "4:3", "seed": random.randint(0, 999999)}
+        print(f"   🧸 Generating Mochi image...")
+        try:
+            resp = requests.post("https://api.vidu.com/ent/v2/reference2image", headers=headers, json=payload, timeout=30)
+            if resp.status_code != 200:
+                return None
+            task_id = resp.json().get("task_id")
+            for i in range(60):
+                time.sleep(3)
+                if i % 10 == 0 and i > 0:
+                    print(f"   ⏳ {i*3}s...")
+                result = requests.get(f"https://api.vidu.com/ent/v2/tasks/{task_id}/creations", headers=headers, timeout=30)
+                if result.status_code == 200:
+                    data = result.json()
+                    if data.get("state") == "success":
+                        print(f"   ✅ Mochi image generated!")
+                        return data["creations"][0]["url"]
+                    elif data.get("state") in ["failed", "error"]:
+                        return None
+            return None
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+            return None
+
+    def save_post(self, content_type, content_url, caption, shared=True):
+        conn = sqlite3.connect("data/mochi.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO posts (content_type, content_url, caption, location, created_at, shared) VALUES (?, ?, ?, ?, ?, ?)", (content_type, content_url, caption, self.current_location, datetime.now().isoformat(), 1 if shared else 0))
+        conn.commit()
+        conn.close()
+        print(f"   📝 Posted: {caption[:50]}...")
+
     def journal_entry(self, entry):
         conn = sqlite3.connect("data/mochi.db")
         c = conn.cursor()
-        c.execute(
-            "INSERT INTO journal (entry, mood, location, created_at, private) VALUES (?, ?, ?, ?, ?)",
-            (entry, self.mood, self.sub_location or self.current_location, datetime.now().isoformat(), 1)
-        )
+        c.execute("INSERT INTO journal (entry, mood, location, created_at, private) VALUES (?, ?, ?, ?, ?)", (entry, self.mood, self.current_location, datetime.now().isoformat(), 1))
         conn.commit()
         conn.close()
-    
-    def save_post(self, content_type, content_url, caption, shared=False):
+
+    def log_travel_step(self, step, description):
         conn = sqlite3.connect("data/mochi.db")
         c = conn.cursor()
-        c.execute(
-            "INSERT INTO posts (content_type, content_url, caption, location, created_at, shared) VALUES (?, ?, ?, ?, ?, ?)",
-            (content_type, content_url, caption, self.sub_location or self.current_location, datetime.now().isoformat(), 1 if shared else 0)
-        )
+        c.execute("INSERT INTO travel_log (step, description, timestamp, flight, location) VALUES (?, ?, ?, ?, ?)", (step, description, datetime.now().isoformat(), self.travel.get("flight", {}).get("flight", ""), self.current_location))
         conn.commit()
         conn.close()
-    
-    # ==================== LIVE ====================
-    
+
+    def get_photo_prompt(self):
+        state = self.travel_state
+        city = self.current_location
+        if state in ["at_airport", "at_gate"]:
+            return random.choice(AIRPORT_SHOTS)
+        elif state in ["in_flight", "boarding"]:
+            return random.choice(FLIGHT_SHOTS)
+        elif state == "checked_in_hotel":
+            return random.choice(HOTEL_SHOTS)
+        else:
+            city_shots = STREET_SHOTS.get(city, STREET_SHOTS.get("Singapore", []))
+            return random.choice(city_shots) if city_shots else "city street at night, atmospheric, no people"
+
+    def get_caption(self, is_mochi=False):
+        if is_mochi:
+            caption = random.choice(MOCHI_CAPTIONS)
+            return caption.format(city=self.current_location, day=self.days_in_location + 1)
+        else:
+            caption = random.choice(TRAVEL_CAPTIONS)
+            return caption.format(city=self.current_location, gate=self.travel.get("flight", {}).get("gate", "B7"))
+
     def live(self):
         print("\n" + "=" * 60)
         print("🫶 YUNA")
         print("=" * 60)
-        
         local_time = self.get_local_time()
-        time_of_day = self.get_time_of_day()
-        
-        print(f"\n📍 Location: {self.current_location}")
-        if self.is_home:
-            print(f"   🏠 At home: {self.home_base.get('name', 'my place')}")
-        elif self.sub_location:
-            print(f"   📌 At: {self.sub_location}")
-        print(f"🕐 Time: {local_time.strftime('%I:%M %p')} ({time_of_day})")
+        print(f"\n📍 {self.current_location}")
+        print(f"🕐 {local_time.strftime('%I:%M %p')} ({self.get_time_of_day()})")
         print(f"⚡ Energy: {self.energy}%")
         print(f"💭 Mood: {self.mood}")
-        print(f"👕 {self.appearance.what_am_i_wearing()}")
-        print(f"🎯 Activity: {self.current_activity}")
-        
-        # Handle sleeping state
-        if self.current_activity == "sleeping":
-            hours_slept = self.get_minutes_in_activity() / 60
-            print(f"😴 Sleeping... ({hours_slept:.1f} hours)")
-            
-            if self.should_wake_up():
-                print("\n🌅 Waking up!")
-                self.energy = random.randint(70, 95)
-                self.mood = random.choice(["peaceful", "refreshed", "hopeful", "quiet"])
-                self.current_activity = "at_home"
-                self.is_home = True
-                self._save_state()
-                
-                thought = self.think()
-                print(f'💭 "{thought}"')
-                self.journal_entry(thought)
-                
-                return {"action": "woke_up", "thought": thought, "shared": False}
+        print(f"🎯 State: {self.travel_state}")
+        result = {"action": "idle"}
+
+        if self.travel.get("status") == "booked":
+            step = self.get_current_travel_step()
+            if step:
+                result = self._handle_travel_step(step)
             else:
-                return {"action": "sleeping", "shared": False}
-        
-        # Update energy
-        self.update_energy()
-        
-        # Think
-        print("\n💭 Thinking...")
-        thought = self.think()
-        print(f'   "{thought}"')
-        self.journal_entry(thought)
-        print("   (saved to journal)")
-        
-        # Decide what to do
-        print("\n🤔 Deciding...")
-        decision = self.decide_what_to_do()
-        print(f"   Action: {decision['action']}")
-        print(f"   Reason: {decision.get('reason', '')}")
-        
-        result = {"action": decision["action"], "shared": False, "thought": thought}
-        
-        # Execute action
-        if decision["action"] == "go_home":
-            print(f"\n🏠 Heading home to {self.home_base.get('name', 'my place')}...")
-            self.is_home = True
-            self.sub_location = self.home_base.get("name")
-            self.set_activity("at_home", self.home_base.get("name"))
-            self.energy += 10
-            print("   Made it home safely.")
-            
-        elif decision["action"] == "sleep":
-            print("\n😴 Going to bed...")
-            if not self.is_home:
-                print(f"   First heading home to {self.home_base.get('name')}...")
-                self.is_home = True
-            self.set_activity("sleeping", self.home_base.get("name"))
-            self.sub_location = self.home_base.get("name")
-            print("   Goodnight... 🌙")
-            
-        elif decision["action"] == "leave_home":
-            print("\n🚶‍♀️ Heading out to explore...")
-            self.is_home = False
-            self.set_activity("wandering")
-            places = self.get_nearby_places()
-            if places:
-                spot = random.choice(places[:5])
-                self.sub_location = spot['name']
-                print(f"   Going to: {spot['name']}")
-            
-        elif decision["action"] == "think":
-            print("\n💭 Just thinking...")
-            if decision.get("share", False):
-                caption = self.write_caption(thought)
-                self.save_post("text", None, caption, shared=True)
-                result["shared"] = True
-                result["caption"] = caption
-                print(f'   📝 Shared: "{caption}"')
-            
-        elif decision["action"] == "photo":
-            print("\n📸 Taking a photo...")
-            scene = self.decide_scene()
-            print(f"   Scene: {scene[:80]}...")
-            
-            media = self.capture_image(scene)
-            if "url" in media:
-                caption = self.write_caption(scene) if decision.get("share") else None
-                self.save_post("image", media["url"], caption, shared=decision.get("share", False))
-                result["media"] = media
-                result["shared"] = decision.get("share", False)
-                print(f"   🖼️ Done!")
-            else:
-                print(f"   ❌ {media.get('error')}")
-                
-        elif decision["action"] == "video":
-            print("\n🎬 Recording a moment...")
-            scene = self.decide_scene()
-            print(f"   Scene: {scene[:80]}...")
-            
-            media = self.capture_video(scene)
-            if "url" in media:
-                caption = self.write_caption(scene) if decision.get("share") else None
-                self.save_post("video", media["url"], caption, shared=decision.get("share", False))
-                result["media"] = media
-                print(f"   🎥 Done!")
-            else:
-                print(f"   ❌ {media.get('error')}")
-                
-        elif decision["action"] == "mochi":
-            print("\n🧸 Putting on Mochi costume...")
-            self.energy -= 15
-            self.set_activity("mochi", self.sub_location)
-            
-            scene = "standing with arms wide open for hugs, people walking around"
-            media = self.capture_video(scene, as_mochi=True)
-            if "url" in media:
-                caption = self.write_caption("Giving hugs today") if decision.get("share") else None
-                self.save_post("video", media["url"], caption, shared=decision.get("share", False))
-                result["media"] = media
-                result["as_mochi"] = True
-                print(f"   🎥 Done!")
-            else:
-                print(f"   ❌ {media.get('error')}")
-                
-        elif decision["action"] == "wander":
-            print("\n🚶‍♀️ Wandering...")
-            places = self.get_nearby_places()
-            if places:
-                spot = random.choice(places[:5])
-                self.sub_location = spot['name']
-                print(f"   Found: {spot['name']}")
-            self.set_activity("wandering", self.sub_location)
-            self.energy -= 10
-            
-        elif decision["action"] == "rest":
-            print("\n☕ Finding a place to rest...")
-            cafes = self.get_nearby_places("cafe")
-            if cafes:
-                cafe = random.choice(cafes[:3])
-                self.sub_location = cafe['name']
-                print(f"   Sitting at: {cafe['name']}")
-            else:
-                self.sub_location = "a quiet spot"
-            self.set_activity("resting", self.sub_location)
-            self.energy += 15
-            self.energy = min(100, self.energy)
-        
+                print("\n⏳ Waiting for travel day...")
+                result = self._handle_waiting()
+        else:
+            result = self._handle_normal_day()
+
         self._save_state()
-        
+        self._save_travel()
         print("\n" + "=" * 60)
-        print("🫶 Until next time...")
-        print("=" * 60)
-        
         return result
 
+    def _handle_travel_step(self, step):
+        step_name = step["step"]
+        self.travel_state = step_name
+        print(f"\n✈️ TRAVEL: {step['description']}")
+        self.log_travel_step(step_name, step["description"])
+        thought = self.think(step_name)
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        result = {"action": step_name, "thought": thought}
 
-# ==================== MAIN ====================
+        if step_name == "checked_in_hotel":
+            self.complete_arrival()
+
+        if step.get("can_post", True) and random.random() < 0.6:
+            prompt = self.get_photo_prompt()
+            image_url = self.capture_image(prompt)
+            if image_url:
+                caption = self.get_caption()
+                self.save_post("image", image_url, caption)
+                result["image_url"] = image_url
+        return result
+
+    def _handle_waiting(self):
+        thought = self.think("exploring")
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        return {"action": "waiting", "thought": thought}
+
+    def _handle_normal_day(self):
+        if self.current_location == "Singapore" and self.travel.get("status") != "booked":
+            if random.random() < 0.4:
+                print("\n🗺️ Time for a new adventure!")
+                self.plan_and_book_trip()
+                return {"action": "booked_trip"}
+
+        if self.current_location != "Singapore" and self.travel_state in ["checked_in_hotel", "exploring", "resting"]:
+            return self._handle_destination_day()
+
+        thought = self.think("exploring")
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        if random.random() < 0.4:
+            prompt = self.get_photo_prompt()
+            image_url = self.capture_image(prompt)
+            if image_url:
+                self.save_post("image", image_url, self.get_caption())
+                return {"action": "posted", "image_url": image_url}
+        return {"action": "thought", "thought": thought}
+
+    def _handle_destination_day(self):
+        time_of_day = self.get_time_of_day()
+        self.days_in_location += 1
+
+        if time_of_day in ["afternoon", "evening"] and self.energy >= 40:
+            return self._do_mochi_hugs()
+        elif time_of_day in ["morning"]:
+            return self._explore()
+        else:
+            return self._rest()
+
+    def _do_mochi_hugs(self):
+        print("\n🧸 MOCHI TIME!")
+        self.travel_state = "mochi_time"
+        thought = self.think("mochi_time")
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        image_url = self.capture_mochi_image()
+        if image_url:
+            caption = self.get_caption(is_mochi=True)
+            self.save_post("image", image_url, caption)
+            self.mochi_hugs_today += random.randint(10, 30)
+            self.energy -= random.randint(15, 25)
+            self.energy = max(10, self.energy)
+            after_thought = self.think("after_hugs")
+            print(f'💭 "{after_thought}"')
+            self.journal_entry(after_thought)
+            return {"action": "mochi_hugs", "image_url": image_url, "hugs": self.mochi_hugs_today}
+        return {"action": "mochi_attempted"}
+
+    def _explore(self):
+        print("\n🚶 EXPLORING...")
+        self.travel_state = "exploring"
+        thought = self.think("exploring")
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        if random.random() < 0.5:
+            prompt = self.get_photo_prompt()
+            image_url = self.capture_image(prompt)
+            if image_url:
+                self.save_post("image", image_url, self.get_caption())
+                return {"action": "explored_posted", "image_url": image_url}
+        self.energy -= random.randint(5, 15)
+        return {"action": "explored", "thought": thought}
+
+    def _rest(self):
+        print("\n☕ RESTING...")
+        self.travel_state = "resting"
+        thought = self.think("resting")
+        print(f'💭 "{thought}"')
+        self.journal_entry(thought)
+        self.energy += random.randint(10, 20)
+        self.energy = min(100, self.energy)
+        return {"action": "rested", "thought": thought}
+
 
 if __name__ == "__main__":
     yuna = YunaSoul()
